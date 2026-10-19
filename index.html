@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 寵物健康管家</title>
+<style>
+:root{--bg:#fff8f1;--card:#fff;--pri:#f08a4b;--pri2:#ffb36b;--txt:#3d2c22;--mut:#8a7464;--ok:#3fa66b;--warn:#e9a23b;--bad:#e0524a;--line:#f1e3d6}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--txt)}
+header{background:linear-gradient(135deg,var(--pri),var(--pri2));color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{margin:0;font-size:20px;flex:1}header select{padding:8px;border-radius:10px;border:0;font-size:15px}
+nav{display:flex;overflow-x:auto;gap:6px;padding:10px 12px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+nav button{border:0;background:#fdf0e5;color:var(--txt);padding:9px 14px;border-radius:20px;white-space:nowrap;cursor:pointer;font-size:14px}
+nav button.on{background:var(--pri);color:#fff}
+main{max-width:960px;margin:0 auto;padding:16px}
+.card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 10px rgba(150,90,40,.08)}
+.card h2{margin:0 0 12px;font-size:17px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+label{display:block;font-size:13px;color:var(--mut);margin-bottom:4px}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-family:inherit;background:#fffdfb}
+.btn{background:var(--pri);color:#fff;border:0;padding:10px 16px;border-radius:12px;cursor:pointer;font-size:14px}
+.btn.sec{background:#fdf0e5;color:var(--txt)}.btn.red{background:var(--bad)}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left}
+.pill{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;color:#fff}
+.ok{background:var(--ok)}.warn{background:var(--warn)}.bad{background:var(--bad)}
+.pet{display:flex;gap:12px;align-items:center}.avatar{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#fde3cc;display:flex;align-items:center;justify-content:center;font-size:30px;flex-shrink:0}
+.disc{background:#fff1ee;border:2px solid var(--bad);color:#a3302a;padding:12px;border-radius:12px;font-weight:bold;text-align:center}
+.alert{padding:10px 12px;border-radius:10px;margin:6px 0;background:#fff6e5;border-left:4px solid var(--warn)}
+.alert.bad{background:#ffeceb;border-color:var(--bad);color:var(--txt)}.alert.ok{background:#eaf7ef;border-color:var(--ok);color:var(--txt)}
+.chk{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px}.chk label{display:flex;gap:6px;align-items:center;color:var(--txt);font-size:14px;background:#fffaf5;padding:7px;border-radius:8px;margin:0}
+.chk input{width:auto}.result{padding:16px;border-radius:14px;color:#fff;font-size:20px;font-weight:bold;text-align:center}
+.hidden{display:none}.stat{text-align:center}.stat b{display:block;font-size:24px;color:var(--pri)}
+#printArea{display:none}
+@media print{body>*:not(#printArea){display:none!important}#printArea{display:block;padding:20px}#printArea table{font-size:12px}}
+</style></head><body>
+<header><h1>🐾 AI 寵物健康管家</h1><select id="petSel" aria-label="選擇寵物"></select></header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<div id="printArea"></div>
+<script>
+const KEY='petapp_v1';
+let S=JSON.parse(localStorage.getItem(KEY)||'null')||{pets:[],records:[],daily:[],cur:null};
+const save=()=>localStorage.setItem(KEY,JSON.stringify(S));
+const $=s=>document.querySelector(s), uid=()=>Math.random().toString(36).slice(2,9);
+const ymd=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+const today=()=>ymd(new Date());
+const addDays=(d,n)=>{const x=new Date(d+'T00:00');x.setDate(x.getDate()+n);return ymd(x)};
+const diffDays=d=>Math.round((new Date(d+'T00:00')-new Date(today()+'T00:00'))/864e5);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cur=()=>S.pets.find(p=>p.id===S.cur);
+const TYPES={vaccine:'💉 疫苗',deworm:'🪱 驅蟲',med:'💊 用藥',vet:'🏥 就診'};
+const TABS=[['dash','🏠 總覽'],['pets','🐶 寵物檔案'],['passport','📘 健康護照'],['daily','📝 日常紀錄'],['ai','🤖 AI 症狀初篩'],['share','👨‍👩‍👧 家庭共享']];
+let tab='dash';
+function age(b){if(!b)return'';const m=(new Date()-new Date(b))/2.63e9;return m<12?Math.floor(m)+' 個月':(m/12).toFixed(1)+' 歲'}
+function renderNav(){$('#nav').innerHTML=TABS.map(([k,v])=>`<button class="${k===tab?'on':''}" onclick="go('${k}')">${v}</button>`).join('');
+ $('#petSel').innerHTML=S.pets.length?S.pets.map(p=>`<option value="${p.id}" ${p.id===S.cur?'selected':''}>${p.species==='cat'?'🐱':'🐶'} ${esc(p.name)}</option>`).join(''):'<option>尚無寵物</option>';}
+$('#petSel').onchange=e=>{S.cur=e.target.value;save();render()};
+function go(t){tab=t;render()}
+function render(){if(!cur()&&S.pets.length)S.cur=S.pets[0].id;renderNav();$('#main').innerHTML=(V[tab])();(A[tab]||(()=>{}))();}
+function noPet(){return `<div class="card"><h2>歡迎！</h2><p>還沒有寵物資料。請先新增寵物，或載入示範資料看看效果。</p><div class="row"><button class="btn" onclick="go('pets')">新增寵物</button><button class="btn sec" onclick="seed()">載入示範資料</button></div></div>`}
+function avatar(p){return p.photo?`<img class="avatar" src="${p.photo}" alt="">`:`<div class="avatar">${p.species==='cat'?'🐱':'🐶'}</div>`}
+function reminders(p){const out=[];['vaccine','deworm'].forEach(t=>{const rs=S.records.filter(r=>r.pet===p.id&&r.type===t&&r.next);
+ const byName={};rs.forEach(r=>{const k=r.name;if(!byName[k]||byName[k].date<r.date)byName[k]=r});Object.values(byName).forEach(r=>out.push({...r,days:diffDays(r.next)}))});
+ return out.sort((a,b)=>a.days-b.days)}
+function trend(p){const d=S.daily.filter(x=>x.pet===p.id);const t=today();
+ const sum=(a,b)=>d.filter(x=>x.date>addDays(t,-a)&&x.date<=addDays(t,-b)).map(x=>+x.activity||0);
+ const w1=sum(7,0),w0=sum(14,7);const av=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:null;const a1=av(w1),a0=av(w0);const al=[];
+ if(a1!=null&&a0){const ch=(a1-a0)/a0*100;if(ch<=-30)al.push(['bad',`⚠️ 最近 7 天平均活動量 ${a1.toFixed(0)} 分鐘，比前一週（${a0.toFixed(0)} 分鐘）下降 ${Math.abs(ch).toFixed(0)}%，建議留意精神與食慾。`]);else al.push(['ok',`✅ 活動量穩定（本週 ${a1.toFixed(0)} 分 / 上週 ${a0.toFixed(0)} 分，${ch>=0?'+':''}${ch.toFixed(0)}%）`])}
+ const ws=d.filter(x=>x.weight).sort((a,b)=>a.date<b.date?-1:1);if(ws.length>=2){const f=ws[0].weight,l=ws[ws.length-1].weight,c=(l-f)/f*100;if(Math.abs(c)>=5)al.push(['',`⚖️ 體重在紀錄期間變化 ${c.toFixed(1)}%（${f} → ${l} kg）`])}
+ const bad=d.filter(x=>x.date>addDays(t,-3)&&['軟便','腹瀉','血便'].includes(x.stool));if(bad.length>=2)al.push(['bad',`💩 近 3 天有 ${bad.length} 天排便異常，若持續請就醫。`]);
+ return al}
+const V={
+dash(){const p=cur();if(!p)return noPet();const rm=reminders(p);
+ const last=S.daily.filter(x=>x.pet===p.id).sort((a,b)=>a.date<b.date?1:-1)[0];
+ return `<div class="card"><div class="pet">${avatar(p)}<div><h2 style="margin:0">${esc(p.name)}</h2><div style="color:var(--mut)">${p.species==='cat'?'貓':'狗'}・${esc(p.breed)}・${age(p.birthday)}・${p.weight||'-'} kg</div>${p.allergies?`<div style="color:var(--bad);font-size:13px">過敏：${esc(p.allergies)}</div>`:''}</div></div></div>
+ <div class="card"><h2>🔔 即將到期提醒</h2>${rm.length?rm.map(r=>`<div class="alert ${r.days<0?'bad':r.days<=14?'':'ok'}">${TYPES[r.type]} <b>${esc(r.name)}</b>：${r.next}　<span class="pill ${r.days<0?'bad':r.days<=14?'warn':'ok'}">${r.days<0?'已逾期 '+(-r.days)+' 天':r.days===0?'今天':'剩 '+r.days+' 天'}</span></div>`).join(''):'<p style="color:var(--mut)">尚無疫苗/驅蟲下次日期。</p>'}</div>
+ <div class="card"><h2>📈 趨勢提醒</h2>${trend(p).map(([c,t])=>`<div class="alert ${c}">${t}</div>`).join('')||'<p style="color:var(--mut)">紀錄天數不足，持續記錄兩週後會出現趨勢分析。</p>'}</div>
+ <div class="card"><h2>📊 最近一筆日常紀錄</h2>${last?`<div class="grid"><div class="stat"><b>${last.weight||'-'}</b>體重 kg</div><div class="stat"><b>${last.activity||'-'}</b>活動 分</div><div class="stat"><b>${esc(last.mood)}</b>精神</div><div class="stat"><b>${esc(last.stool)}</b>排便</div></div><p style="color:var(--mut);font-size:13px">${last.date}</p>`:'尚無紀錄'}</div>`},
+pets(){return `<div class="card"><h2>${S.edit?'編輯寵物':'新增寵物'}</h2><div class="grid">
+ <div><label>名字</label><input id="pName"></div><div><label>物種</label><select id="pSp"><option value="dog">狗</option><option value="cat">貓</option></select></div>
+ <div><label>品種</label><input id="pBreed"></div><div><label>生日</label><input type="date" id="pBd"></div>
+ <div><label>體重 (kg)</label><input type="number" step="0.1" id="pW"></div><div><label>過敏</label><input id="pAl" placeholder="例如：雞肉"></div>
+ <div><label>照片</label><input type="file" accept="image/*" id="pPh"></div></div>
+ <div class="row"><button class="btn" id="pSave">儲存</button>${S.edit?'<button class="btn sec" onclick="S.edit=null;render()">取消</button>':''}<button class="btn sec" onclick="seed()">載入示範資料</button></div></div>
+ ${S.pets.map(p=>`<div class="card pet">${avatar(p)}<div style="flex:1"><b>${esc(p.name)}</b><div style="color:var(--mut);font-size:14px">${p.species==='cat'?'貓':'狗'}・${esc(p.breed)}・${age(p.birthday)}・${p.weight||'-'}kg</div></div><button class="btn sec" onclick="S.edit='${p.id}';render()">編輯</button><button class="btn red" onclick="delPet('${p.id}')">刪除</button></div>`).join('')}`},
+passport(){const p=cur();if(!p)return noPet();const rs=S.records.filter(r=>r.pet===p.id).sort((a,b)=>a.date<b.date?1:-1);
+ return `<div class="card"><h2>新增健康紀錄</h2><div class="grid"><div><label>類型</label><select id="rT">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+ <div><label>項目名稱</label><input id="rN" placeholder="例如：八合一疫苗"></div><div><label>日期</label><input type="date" id="rD" value="${today()}"></div>
+ <div><label>下次日期（選填）</label><input type="date" id="rNx"></div><div><label>醫院 / 備註</label><input id="rNote"></div></div>
+ <div class="row"><button class="btn" id="rSave">新增</button><button class="btn sec" onclick="printPass()">🖨️ 匯出 / 列印 PDF</button></div></div>
+ <div class="card"><h2>📘 ${esc(p.name)} 的健康護照</h2>${rs.length?`<table><tr><th>類型</th><th>項目</th><th>日期</th><th>下次</th><th>備註</th><th></th></tr>${rs.map(r=>`<tr><td>${TYPES[r.type]}</td><td>${esc(r.name)}</td><td>${r.date}</td><td>${r.next||'-'}</td><td>${esc(r.note)}</td><td><button class="btn sec" onclick="delRec('${r.id}')">✕</button></td></tr>`).join('')}</table>`:'尚無紀錄'}</div>`},
+daily(){const p=cur();if(!p)return noPet();const ds=S.daily.filter(x=>x.pet===p.id).sort((a,b)=>a.date<b.date?1:-1);
+ return `<div class="card"><h2>今日紀錄</h2><div class="grid"><div><label>日期</label><input type="date" id="dD" value="${today()}"></div>
+ <div><label>飲食</label><select id="dF"><option>正常</option><option>吃得少</option><option>沒吃</option><option>吃得多</option></select></div>
+ <div><label>排便</label><select id="dS"><option>正常</option><option>軟便</option><option>腹瀉</option><option>便秘</option><option>血便</option></select></div>
+ <div><label>活動（分鐘）</label><input type="number" id="dA" value="30"></div>
+ <div><label>精神</label><select id="dM"><option>活潑</option><option>普通</option><option>懶散</option><option>焦躁</option></select></div>
+ <div><label>體重 (kg)</label><input type="number" step="0.1" id="dW" value="${p.weight||''}"></div></div>
+ <div class="row"><button class="btn" id="dSave">儲存（同日覆蓋）</button></div></div>
+ <div class="card"><h2>⚖️ 體重趨勢</h2><div id="chart"></div>${trend(p).map(([c,t])=>`<div class="alert ${c}">${t}</div>`).join('')}</div>
+ <div class="card"><h2>歷史紀錄</h2><table><tr><th>日期</th><th>飲食</th><th>排便</th><th>活動</th><th>精神</th><th>體重</th></tr>${ds.slice(0,30).map(x=>`<tr><td>${x.date}</td><td>${esc(x.food)}</td><td>${esc(x.stool)}</td><td>${x.activity}</td><td>${esc(x.mood)}</td><td>${x.weight||'-'}</td></tr>`).join('')}</table></div>`},
+ai(){const p=cur();if(!p)return noPet();const sy=SYM.filter(s=>!s.cat||p.species==='cat');
+ return `<div class="disc">⚠️ 僅供參考，非獸醫診斷。若有疑慮或狀況惡化，請立即聯繫獸醫。</div><br>
+ <div class="card"><h2>🤖 ${esc(p.name)} 怎麼了？</h2><div class="chk">${sy.map(s=>`<label><input type="checkbox" value="${s.id}">${s.t}</label>`).join('')}</div>
+ <div style="margin-top:10px"><label>症狀描述</label><textarea id="aDesc" rows="3" placeholder="例如：從昨天開始吐了 3 次，不太想吃東西"></textarea></div>
+ <div class="grid" style="margin-top:8px"><div><label>症狀持續時間</label><select id="aDur"><option value="0">不到 24 小時</option><option value="1">1–2 天</option><option value="3">3 天以上</option></select></div><div><label>照片（選填）</label><input type="file" accept="image/*" id="aPh"></div></div>
+ <img id="aPrev" class="hidden" style="max-width:200px;border-radius:12px;margin-top:8px">
+ <div class="row"><button class="btn" id="aRun">開始初篩</button></div></div><div id="aRes"></div>`},
+share(){return `<div class="card"><h2>👨‍👩‍👧 家庭共享（示範）</h2><p style="color:var(--mut)">原型版以 JSON 檔模擬共享：匯出後傳給家人或保姆，對方匯入即可看到相同資料。正式版可改為雲端同步與邀請連結。</p>
+ <div class="row"><button class="btn" onclick="exportJSON()">⬇️ 匯出 JSON</button><label class="btn sec" style="margin:0;color:var(--txt)">⬆️ 匯入 JSON<input type="file" accept="application/json" id="imp" class="hidden"></label></div></div>
+ <div class="card"><h2>資料管理</h2><div class="row"><button class="btn sec" onclick="seed()">載入示範資料</button><button class="btn red" onclick="if(confirm('確定清除所有資料？')){localStorage.removeItem(KEY);S={pets:[],records:[],daily:[],cur:null};render()}">清除全部資料</button></div></div>`}
+};
+// symptom rules: transparent, demo-only
+const SYM=[
+{id:'breath',t:'呼吸困難 / 張口呼吸',lv:3},{id:'seizure',t:'抽搐 / 癲癇',lv:3},{id:'toxin',t:'疑似誤食毒物（巧克力、葡萄、百合、藥物）',lv:3},
+{id:'bloodvomit',t:'吐血 / 嘔吐物帶血',lv:3},{id:'nourine',t:'超過 24 小時沒排尿 / 頻跑砂盆尿不出來',lv:3,cat:1},{id:'collapse',t:'昏倒 / 無法站立',lv:3},
+{id:'bloat',t:'腹部腫脹、乾嘔',lv:3},{id:'gums',t:'牙齦蒼白或發紫',lv:3},{id:'bleed',t:'大量出血 / 嚴重外傷',lv:3},
+{id:'vomit',t:'嘔吐',lv:1},{id:'diarrhea',t:'腹瀉',lv:1},{id:'bloodstool',t:'血便',lv:2},{id:'noeat',t:'食慾不振 / 不吃',lv:1},
+{id:'lethargy',t:'精神差、嗜睡',lv:1},{id:'limp',t:'跛腳',lv:1},{id:'eye',t:'眼睛紅腫 / 分泌物',lv:1},{id:'itch',t:'皮膚癢、掉毛',lv:0},
+{id:'cough',t:'咳嗽 / 打噴嚏',lv:1},{id:'fever',t:'身體發燙',lv:2},{id:'drink',t:'喝水量明顯增加',lv:1}];
+const LV=[{t:'居家觀察',c:'ok',d:'目前症狀看起來不緊急。請持續記錄飲食、排便與精神，若 24–48 小時未改善或惡化，請就醫。'},
+{t:'居家觀察',c:'ok',d:''},{t:'盡快就醫',c:'warn',d:'建議 24 小時內預約獸醫檢查，期間留意是否惡化。'},
+{t:'立即就醫',c:'bad',d:'可能危及生命！請立即前往最近的動物醫院或 24 小時急診，不要等待。'}];
+function triage(ids,dur,p){const why=[];let lv=0;const s=ids.map(i=>SYM.find(x=>x.id===i));
+ s.forEach(x=>{if(x.lv===3){lv=3;why.push(`「${x.t}」屬於緊急徵兆 → 立即就醫`)}else if(x.lv===2){lv=Math.max(lv,2);why.push(`「${x.t}」→ 盡快就醫`)}});
+ const mild=s.filter(x=>x.lv===1).length;
+ if(mild>=3){lv=Math.max(lv,2);why.push(`同時出現 ${mild} 個一般症狀 → 盡快就醫`)}
+ if(mild>=1&&dur>=3){lv=Math.max(lv,2);why.push('一般症狀持續 3 天以上 → 盡快就醫')}
+ if(p.species==='cat'&&ids.includes('noeat')&&dur>=1){lv=Math.max(lv,2);why.push('貓咪超過 24 小時不吃有脂肪肝風險 → 盡快就醫')}
+ const a=age(p.birthday);const yrs=(new Date()-new Date(p.birthday))/3.156e10;
+ if(mild>=1&&(yrs<0.5||yrs>10)&&lv<2){lv=2;why.push('幼年（<6 個月）或高齡（>10 歲）寵物抵抗力較弱 → 盡快就醫')}
+ if(!why.length)why.push(mild?'僅有輕微症狀且持續時間短 → 居家觀察':'未勾選明顯症狀 → 居家觀察');
+ return {lv,why}}
+const A={
+pets(){const e=S.edit&&S.pets.find(p=>p.id===S.edit);if(e){pName.value=e.name;pSp.value=e.species;pBreed.value=e.breed;pBd.value=e.birthday;pW.value=e.weight;pAl.value=e.allergies}
+ $('#pSave').onclick=async()=>{if(!pName.value.trim())return alert('請輸入名字');const f=pPh.files[0];const photo=f?await toData(f):(e?e.photo:'');
+  const o={id:e?e.id:uid(),name:pName.value.trim(),species:pSp.value,breed:pBreed.value,birthday:pBd.value,weight:+pW.value||'',allergies:pAl.value,photo};
+  if(e)Object.assign(e,o);else S.pets.push(o);S.cur=o.id;S.edit=null;save();render()}},
+passport(){$('#rSave').onclick=()=>{if(!rN.value)return alert('請輸入項目名稱');S.records.push({id:uid(),pet:S.cur,type:rT.value,name:rN.value,date:rD.value,next:rNx.value,note:rNote.value});save();render()}},
+daily(){$('#dSave').onclick=()=>{const o={pet:S.cur,date:dD.value,food:dF.value,stool:dS.value,activity:+dA.value||0,mood:dM.value,weight:+dW.value||''};
+ S.daily=S.daily.filter(x=>!(x.pet===S.cur&&x.date===o.date));S.daily.push(o);if(o.weight&&o.date>=today())cur().weight=o.weight;save();render()};drawChart()},
+ai(){aPh.onchange=async()=>{const f=aPh.files[0];if(f){aPrev.src=await toData(f);aPrev.classList.remove('hidden')}};
+ $('#aRun').onclick=()=>{const ids=[...document.querySelectorAll('.chk input:checked')].map(x=>x.value);const r=triage(ids,+aDur.value,cur());const L=LV[r.lv];
+  $('#aRes').innerHTML=`<div class="card"><div class="result ${L.c}">${L.t}</div><p>${L.d||LV[0].d}</p><h2>判斷依據（示範用規則引擎）</h2><ul>${r.why.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>
+  ${aDesc.value?`<p style="color:var(--mut)">你的描述：${esc(aDesc.value)}（原型版不分析文字/照片，正式版可串接 AI 視覺與語言模型）</p>`:''}
+  <p style="font-size:13px;color:var(--mut)">此結果由透明的規則邏輯產生，僅為示範，並未使用真正的醫療模型。</p><div class="disc">僅供參考，非獸醫診斷</div></div>`;$('#aRes').scrollIntoView({behavior:'smooth'})}},
+share(){imp.onchange=()=>{const f=imp.files[0];if(!f)return;f.text().then(t=>{try{const d=JSON.parse(t);if(!Array.isArray(d.pets))throw 0;S={records:[],daily:[],...d};save();alert('匯入成功');render()}catch(e){alert('檔案格式錯誤')}})}}
+};
+function drawChart(){const ws=S.daily.filter(x=>x.pet===S.cur&&x.weight).sort((a,b)=>a.date<b.date?-1:1).slice(-30);const el=$('#chart');
+ if(ws.length<2){el.innerHTML='<p style="color:var(--mut)">至少需要 2 筆體重紀錄。</p>';return}
+ const W=600,H=200,P=36,v=ws.map(x=>x.weight),mn=Math.min(...v)-0.2,mx=Math.max(...v)+0.2;
+ const X=i=>P+i*(W-2*P)/(ws.length-1),Y=w=>H-P+(-(w-mn)/(mx-mn))*(H-2*P);
+ const pts=ws.map((x,i)=>`${X(i)},${Y(x.weight)}`).join(' ');
+ el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f08a4b" stop-opacity=".35"/><stop offset="1" stop-color="#f08a4b" stop-opacity="0"/></linearGradient></defs>
+ ${[mn,(mn+mx)/2,mx].map(t=>`<line x1="${P}" x2="${W-P}" y1="${Y(t)}" y2="${Y(t)}" stroke="#f1e3d6"/><text x="2" y="${Y(t)+4}" font-size="11" fill="#8a7464">${t.toFixed(1)}</text>`).join('')}
+ <polygon points="${X(0)},${H-P} ${pts} ${X(ws.length-1)},${H-P}" fill="url(#g)"/><polyline points="${pts}" fill="none" stroke="#f08a4b" stroke-width="3"/>
+ ${ws.map((x,i)=>`<circle cx="${X(i)}" cy="${Y(x.weight)}" r="3.5" fill="#fff" stroke="#f08a4b" stroke-width="2"><title>${x.date}: ${x.weight}kg</title></circle>`).join('')}
+ <text x="${P}" y="${H-10}" font-size="11" fill="#8a7464">${ws[0].date}</text><text x="${W-P}" y="${H-10}" font-size="11" fill="#8a7464" text-anchor="end">${ws[ws.length-1].date}</text></svg>`}
+function toData(f){return new Promise(r=>{const fr=new FileReader();fr.onload=()=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas'),s=Math.min(1,400/Math.max(img.width,img.height));c.width=img.width*s;c.height=img.height*s;c.getContext('2d').drawImage(img,0,0,c.width,c.height);r(c.toDataURL('image/jpeg',.8))};img.onerror=()=>r(fr.result);img.src=fr.result};fr.readAsDataURL(f)})}
+function delPet(id){if(!confirm('刪除此寵物及所有紀錄？'))return;S.pets=S.pets.filter(p=>p.id!==id);S.records=S.records.filter(r=>r.pet!==id);S.daily=S.daily.filter(r=>r.pet!==id);S.cur=null;save();render()}
+function delRec(id){S.records=S.records.filter(r=>r.id!==id);save();render()}
+function printPass(){const p=cur();const rs=S.records.filter(r=>r.pet===p.id).sort((a,b)=>a.date<b.date?-1:1);
+ $('#printArea').innerHTML=`<h1>🐾 寵物健康護照</h1><div style="display:flex;gap:16px;align-items:center">${p.photo?`<img src="${p.photo}" style="width:90px;height:90px;border-radius:50%;object-fit:cover">`:''}<div><h2 style="margin:0">${esc(p.name)}</h2><p>${p.species==='cat'?'貓':'狗'}｜品種：${esc(p.breed)}｜生日：${p.birthday||'-'}（${age(p.birthday)}）｜體重：${p.weight||'-'} kg<br>過敏：${esc(p.allergies)||'無'}</p></div></div>
+ ${Object.entries(TYPES).map(([k,v])=>{const l=rs.filter(r=>r.type===k);return l.length?`<h3>${v}</h3><table border="1" cellspacing="0" cellpadding="4" style="width:100%"><tr><th>項目</th><th>日期</th><th>下次</th><th>備註</th></tr>${l.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.date}</td><td>${r.next||'-'}</td><td>${esc(r.note)}</td></tr>`).join('')}</table>`:''}).join('')}
+ <p style="margin-top:30px;font-size:11px;color:#888">由 AI 寵物健康管家匯出於 ${today()}</p>`;window.print()}
+function exportJSON(){const b=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`pet-health-${today()}.json`;a.click()}
+function seed(){const d=uid(),c=uid(),t=today();
+ S={cur:d,pets:[{id:d,name:'麻糬',species:'dog',breed:'柴犬',birthday:addDays(t,-365*3-40),weight:9.8,allergies:'雞肉',photo:''},{id:c,name:'奶茶',species:'cat',breed:'米克斯',birthday:addDays(t,-365*11),weight:4.6,allergies:'',photo:''}],
+ records:[{id:uid(),pet:d,type:'vaccine',name:'八合一疫苗',date:addDays(t,-355),next:addDays(t,10),note:'安心動物醫院'},{id:uid(),pet:d,type:'vaccine',name:'狂犬病疫苗',date:addDays(t,-200),next:addDays(t,165),note:''},
+ {id:uid(),pet:d,type:'deworm',name:'體內外驅蟲',date:addDays(t,-33),next:addDays(t,-3),note:'口服錠'},{id:uid(),pet:d,type:'vet',name:'年度健檢',date:addDays(t,-90),next:'',note:'血檢正常'},
+ {id:uid(),pet:d,type:'med',name:'止癢藥',date:addDays(t,-60),next:'',note:'7 天療程'},{id:uid(),pet:c,type:'vaccine',name:'三合一疫苗',date:addDays(t,-300),next:addDays(t,65),note:''},{id:uid(),pet:c,type:'deworm',name:'滴劑驅蟲',date:addDays(t,-20),next:addDays(t,10),note:''}],daily:[]};
+ for(let i=20;i>=0;i--){const date=addDays(t,-i);S.daily.push({pet:d,date,food:i<3?'吃得少':'正常',stool:i===1||i===2?'軟便':'正常',activity:i<7?25+Math.round(Math.random()*10):55+Math.round(Math.random()*15),mood:i<5?'懶散':'活潑',weight:+(10.2-(20-i)*0.02+Math.random()*0.1).toFixed(1)});
+  S.daily.push({pet:c,date,food:'正常',stool:'正常',activity:20+Math.round(Math.random()*8),mood:'普通',weight:+(4.6+Math.random()*0.1).toFixed(1)})}
+ save();tab='dash';render()}
+render();
+</script></body></html>
