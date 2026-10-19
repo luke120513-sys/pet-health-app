@@ -82,8 +82,9 @@ const KEY='pet_app_v1',PKEY='pet_plan_v1';
 if(localStorage.getItem('petapp_v1')!==null){if(localStorage.getItem(KEY)===null)localStorage.setItem(KEY,localStorage.getItem('petapp_v1'));localStorage.removeItem('petapp_v1')}
 function clearPetData(){Object.keys(localStorage).filter(k=>k.startsWith('pet_')).forEach(k=>localStorage.removeItem(k))}
 let S=JSON.parse(localStorage.getItem(KEY)||'null')||{pets:[],records:[],daily:[],cur:null};
-S.pets=S.pets||[];S.records=S.records||[];S.daily=S.daily||[];
-let PL=JSON.parse(localStorage.getItem(PKEY)||'null')||{tier:'free',until:null,trial:false,trialUsed:false,ai:{}};
+S.pets=S.pets||[];S.records=S.records||[];S.daily=S.daily||[];S.symptoms=S.symptoms||[];
+let PL=JSON.parse(localStorage.getItem(PKEY)||'null')||{tier:'free',until:null,trial:false,trialUsed:false,sum:{}};
+PL.sum=PL.sum||{};delete PL.ai;
 const save=()=>localStorage.setItem(KEY,JSON.stringify(S)),savePL=()=>localStorage.setItem(PKEY,JSON.stringify(PL));
 const $=s=>document.querySelector(s),uid=()=>Math.random().toString(36).slice(2,9);
 const ymd=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
@@ -96,8 +97,8 @@ const TYPES={vaccine:['💉','疫苗'],deworm:['🪱','驅蟲'],med:['💊','用
 const FOOD=[['😋','正常'],['🥄','吃得少'],['🚫','沒吃'],['🍖','吃得多']],STOOL=[['👍','正常'],['💧','軟便'],['🌊','腹瀉'],['🪨','便秘'],['🩸','血便']],MOOD=[['🤩','活潑'],['🙂','普通'],['😴','懶散'],['😰','焦躁']];
 // ---------- 方案 ----------
 const isPro=()=>PL.tier==='pro'&&(!PL.until||PL.until>=today());
-const FREE_AI=3,month=()=>today().slice(0,7);
-const aiLeft=()=>isPro()?Infinity:Math.max(0,FREE_AI-(PL.ai[month()]||0));
+const FREE_SUM=1,month=()=>today().slice(0,7);
+const sumLeft=()=>isPro()?Infinity:Math.max(0,FREE_SUM-(PL.sum[month()]||0));
 // ---------- UI helpers ----------
 function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.style.opacity=0,1800);setTimeout(()=>t.remove(),2200)}
 function sheet(html,center){closeSheet();const b=document.createElement('div');b.className='sheetbg';b.id='sheet';b.innerHTML=`<div class="sheet ${center?'center':''}">${html}</div>`;b.onclick=e=>{if(e.target===b)closeSheet()};document.body.appendChild(b);return b}
@@ -105,9 +106,9 @@ function closeSheet(){const s=$('#sheet');if(s)s.remove()}
 function confirmBox(msg,ok,label='刪除'){sheet(`<h2>確定嗎？</h2><p>${msg}</p><div class="row"><button class="btn sec" onclick="closeSheet()">取消</button><button class="btn" style="background:var(--bad)" id="cfOk">${label}</button></div>`,true);$('#cfOk').onclick=()=>{closeSheet();ok()}}
 function age(b){if(!b)return'';const m=(new Date()-new Date(b+'T00:00'))/2.63e9;return m<12?Math.floor(m)+' 個月':(m/12).toFixed(1).replace('.0','')+' 歲'}
 function avatar(p,cls='avatar'){return p.photo?`<img class="${cls}" src="${p.photo}" alt="">`:`<div class="${cls}">${p.species==='cat'?'🐱':'🐶'}</div>`}
-const TABS=[['dash','🏠','首頁'],['daily','📝','紀錄'],['passport','📘','護照'],['ai','🩺','症狀'],['me','👤','我的']];
-let tab='dash',onbStep=0,aiState=null,pfilter='all';
-function go(t){tab=t;aiState=t==='ai'?aiState:null;render();window.scrollTo(0,0)}
+const TABS=[['dash','🏠','首頁'],['daily','📝','紀錄'],['passport','📘','護照'],['visit','🏥','就醫準備'],['me','👤','我的']];
+let tab='dash',onbStep=0,vtab='log',pfilter='all';
+function go(t){if(t==='ai')t='visit';tab=t;render();window.scrollTo(0,0)}
 function render(){if(!cur()&&S.pets.length)S.cur=S.pets[0].id;
  $('#tabbar').innerHTML=TABS.map(([k,i,l])=>`<button class="${k===tab||(tab==='pets'||tab==='plan'||tab==='share')&&k==='me'?'on':''}" onclick="go('${k}')"><span class="i">${i}</span>${l}</button>`).join('');
  $('#planBadge').className='badge'+(isPro()?' pro':'');$('#planBadge').textContent=isPro()?(PL.trial?'👑 試用中':'👑 Premium'):'免費版 · 升級';
@@ -116,7 +117,7 @@ function render(){if(!cur()&&S.pets.length)S.cur=S.pets[0].id;
  $('#tabbar').classList.toggle('hidden',!S.pets.length&&tab==='dash');
  $('#main').innerHTML=(!S.pets.length&&!['me','plan','share','pets'].includes(tab))?onboarding():V[tab]();(A[tab]||(()=>{}))()}
 // ---------- onboarding ----------
-const ONB=[['🐾','歡迎來到寵物健康管家','把毛孩的疫苗、看診、每天吃喝拉撒，通通記在一個地方。'],['🔔','到期自動提醒','疫苗、驅蟲快到期會提醒你，再也不怕忘記。'],['🩺','覺得怪怪的？先問問看','勾選症狀就能知道要不要馬上看醫生（僅供參考，非獸醫診斷）。']];
+const ONB=[['🐾','歡迎來到寵物健康管家','把毛孩的疫苗、看診、每天吃喝拉撒，通通記在一個地方。'],['🔔','到期自動提醒','疫苗、驅蟲快到期會提醒你，再也不怕忘記。'],['🏥','看醫生前，一鍵整理','記下症狀，一鍵產生看診摘要給獸醫，說得更清楚。']];
 function onboarding(){const [e,t,d]=ONB[onbStep];const last=onbStep===ONB.length-1;
  return `<div class="card onb"><div class="e">${e}</div><h2>${t}</h2><p class="mut" style="font-size:16px">${d}</p><div class="dots">${ONB.map((_,i)=>`<i class="${i===onbStep?'on':''}"></i>`).join('')}</div>
  ${last?`<button class="btn block" onclick="addPet()">🐶 新增我的第一隻毛孩</button><div style="height:10px"></div><button class="btn sec block" onclick="seed()">先看看示範資料</button>`:`<button class="btn block" onclick="onbStep++;render()">下一步</button><button class="btn ghost" onclick="onbStep=${ONB.length-1};render()">略過</button>`}</div>`}
@@ -127,9 +128,9 @@ function dueCard(r){const c=r.days<0?'bad':r.days<=14?'warn':'';const pc=r.days<
  return `<div class="due ${c}"><span class="ic">${TYPES[r.type][0]}</span><div class="t"><b>${esc(r.name)}</b><span class="mut">${r.next}</span></div><span class="pill ${pc}">${r.days<0?'逾期 '+(-r.days)+' 天':r.days===0?'就是今天':'還有 '+r.days+' 天'}</span>${r.days<=14?`<button class="btn sec" style="min-height:40px;padding:6px 10px;font-size:14px" onclick="markDone('${r.id}')">完成</button>`:''}</div>`}
 function trend(p){const d=S.daily.filter(x=>x.pet===p.id),t=today();const pick=(a,b)=>d.filter(x=>x.date>addDays(t,-a)&&x.date<=addDays(t,-b)).map(x=>+x.activity||0);
  const av=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:null,a1=av(pick(7,0)),a0=av(pick(14,7)),al=[];
- if(a1!=null&&a0){const ch=(a1-a0)/a0*100;if(ch<=-30)al.push(['bad',`🏃 這週平均活動 ${a1.toFixed(0)} 分鐘，比上週少了 ${Math.abs(ch).toFixed(0)}%。留意牠的精神和食慾喔。`]);else al.push(['ok',`🏃 活動量穩定（這週 ${a1.toFixed(0)} 分 / 上週 ${a0.toFixed(0)} 分）`])}
+ if(a1!=null&&a0){const ch=(a1-a0)/a0*100;if(ch<=-30)al.push(['bad',`🏃 這週平均活動 ${a1.toFixed(0)} 分鐘，比上週少了 ${Math.abs(ch).toFixed(0)}%。`]);else al.push(['ok',`🏃 活動量穩定（這週 ${a1.toFixed(0)} 分 / 上週 ${a0.toFixed(0)} 分）`])}
  const ws=d.filter(x=>x.weight).sort((a,b)=>a.date<b.date?-1:1);if(ws.length>=2){const f=ws[0].weight,l=ws[ws.length-1].weight,c=(l-f)/f*100;if(Math.abs(c)>=5)al.push(['',`⚖️ 體重變化 ${c.toFixed(1)}%（${f} → ${l} kg）`])}
- const bad=d.filter(x=>x.date>addDays(t,-3)&&['軟便','腹瀉','血便'].includes(x.stool));if(bad.length>=2)al.push(['bad',`💩 近 3 天有 ${bad.length} 天便便不太正常，持續的話建議看醫生。`]);
+ const bad=d.filter(x=>x.date>addDays(t,-3)&&['軟便','腹瀉','血便'].includes(x.stool));if(bad.length>=2)al.push(['bad',`💩 近 3 天有 ${bad.length} 天便便不太正常。`]);
  return al}
 // ---------- views ----------
 const V={
@@ -142,7 +143,7 @@ dash(){const p=cur(),rm=reminders(p),t=today(),log=S.daily.find(x=>x.pet===p.id&
  <div class="card"><h2>🔔 接下來要做</h2>${rm.length?rm.slice(0,4).map(dueCard).join(''):`<p class="mut">還沒有疫苗或驅蟲的下次日期。</p><button class="btn sec block" onclick="go('passport');setTimeout(addRecord,50)">＋ 新增疫苗紀錄</button>`}</div>
  <div class="card"><h2>📈 健康小提醒</h2>${trend(p).map(([c,t])=>`<div class="alert ${c}">${t}</div>`).join('')||'<p class="mut">連續記錄兩週後，這裡會出現活動量、體重的變化提醒。</p>'}</div>
  <div class="card" style="display:flex;gap:12px;align-items:center;cursor:pointer" onclick="weeklyReport()"><span style="font-size:32px">📊</span><div style="flex:1"><b>本週 AI 健康週報</b><div class="mut">整理這週的飲食、活動、體重變化</div></div>${isPro()?'<span class="pill p-ok">查看</span>':'<span class="lock">👑 Premium</span>'}</div>
- <div class="card" style="display:flex;gap:12px;align-items:center;cursor:pointer" onclick="go('ai')"><span style="font-size:32px">🩺</span><div style="flex:1"><b>毛孩怪怪的？</b><div class="mut">3 步驟症狀初篩，看要不要馬上就醫</div></div><span style="font-size:22px;color:var(--mut)">›</span></div>`},
+ <div class="card" style="display:flex;gap:12px;align-items:center;cursor:pointer" onclick="go('visit')"><span style="font-size:32px">🏥</span><div style="flex:1"><b>就醫準備</b><div class="mut">記錄症狀、產生看診摘要給獸醫</div></div><span style="font-size:22px;color:var(--mut)">›</span></div>`},
 daily(){const p=cur(),ds=S.daily.filter(x=>x.pet===p.id).sort((a,b)=>a.date<b.date?1:-1);
  return `<button class="btn block" onclick="quickLog()" style="margin-bottom:14px">＋ 記錄今天</button>
  <div class="card"><h2>⚖️ 體重變化</h2><div id="chart"></div></div>
@@ -152,33 +153,17 @@ passport(){const p=cur(),rs=S.records.filter(r=>r.pet===p.id&&(pfilter==='all'||
  return `<div class="row" style="margin:0 0 14px"><button class="btn" onclick="addRecord()">＋ 新增紀錄</button><button class="btn sec" onclick="printPass()">🖨️ 匯出 PDF</button></div>
  <div class="seg" style="margin-bottom:14px">${[['all','全部']].concat(Object.entries(TYPES).map(([k,v])=>[k,v[0]+' '+v[1]])).map(([k,l])=>`<button class="${pfilter===k?'on':''}" onclick="pfilter='${k}';render()">${l}</button>`).join('')}</div>
  <div class="card list"><h2>📘 ${esc(p.name)} 的健康護照</h2>${rs.map(r=>`<div class="it"><span class="ic">${TYPES[r.type][0]}</span><div class="t"><b>${esc(r.name)}</b><br><small>${r.date}${r.next?' ・ 下次 '+r.next:''}${r.note?' ・ '+esc(r.note):''}</small></div><button class="btn ghost" onclick="delRec('${r.id}')" aria-label="刪除">🗑️</button></div>`).join('')||'<p class="mut">還沒有紀錄。把疫苗本上的資料記進來吧！</p>'}</div>`},
-ai(){const p=cur();if(!aiState)aiState={step:0,sym:[],dur:'0',desc:'',photo:''};const st=aiState;
- const sy=SYM.filter(s=>!s.cat||p.species==='cat');let body='';
- if(st.step===0)body=`<h2>步驟 1：有沒有這些<span style="color:var(--bad)">緊急狀況</span>？</h2><p class="mut">有任何一項就要馬上就醫</p><div class="chips">${sy.filter(s=>s.lv===3).map(s=>`<button class="chip emg ${st.sym.includes(s.id)?'on':''}" onclick="togSym('${s.id}')">${s.e} ${s.t}</button>`).join('')}</div>
-  <div class="row"><button class="btn" onclick="aiState.step=1;render()">${st.sym.length?'下一步':'都沒有，下一步'}</button></div>`;
- else if(st.step===1)body=`<h2>步驟 2：牠有哪些狀況？</h2><p class="mut">可以複選</p><div class="chips">${sy.filter(s=>s.lv<3).map(s=>`<button class="chip ${st.sym.includes(s.id)?'on':''}" onclick="togSym('${s.id}')">${s.e} ${s.t}</button>`).join('')}</div>
-  <label class="f">大概多久了？</label><div class="seg">${[['0','不到1天'],['1','1–2天'],['3','3天以上']].map(([v,l])=>`<button class="${st.dur===v?'on':''}" onclick="aiState.dur='${v}';render()">${l}</button>`).join('')}</div>
-  <div class="row"><button class="btn sec" onclick="aiState.step=0;render()">上一步</button><button class="btn" onclick="aiState.step=2;render()">下一步</button></div>`;
- else if(st.step===2)body=`<h2>步驟 3：補充說明（可略過）</h2><label class="f">描述一下狀況</label><textarea id="aDesc" rows="3" placeholder="例如：昨天開始吐了 3 次，不太想吃">${esc(st.desc)}</textarea>
-  <label class="f">拍張照片（選填）</label><input type="file" accept="image/*" id="aPh">${st.photo?`<img src="${st.photo}" style="max-width:160px;border-radius:12px;margin-top:8px">`:''}
-  <p class="mut">${isPro()?'👑 Premium：無限次初篩':`本月免費次數剩 <b>${aiLeft()}</b> / ${FREE_AI} 次`}</p>
-  <div class="row"><button class="btn sec" onclick="aiState.desc=$('#aDesc').value;aiState.step=1;render()">上一步</button><button class="btn" onclick="runAI()">看結果</button></div>`;
- else{const r=st.res,L=LV[r.lv];body=`<div class="res r${r.lv}"><div class="e">${L.e}</div><div class="big">${L.t}</div><div style="margin-top:6px;font-size:16px">${L.d}</div></div>
-  ${r.lv===3?`<a class="btn block" style="background:var(--bad);margin-top:12px;text-decoration:none" href="https://www.google.com/maps/search/24小時+動物醫院" target="_blank" rel="noopener">📍 找附近 24 小時動物醫院</a>`:''}
-  <h3>為什麼這樣判斷？</h3><ul style="padding-left:20px">${r.why.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>
-  ${st.desc||st.photo?'<p class="mut">（示範版不分析文字與照片，正式版會加上 AI 影像與文字判讀）</p>':''}
-  <p class="mut">此結果由公開透明的「示範用規則」產生，不是醫療模型。</p>
-  <div class="row"><button class="btn sec" onclick="aiState=null;render()">重新檢查</button><button class="btn" onclick="go('dash')">回首頁</button></div>`}
- return `<div class="disc">⚠️ 僅供參考，非獸醫診斷。狀況不對請直接聯絡獸醫。</div><br><div class="card">${st.step<3?`<div class="steps">${[0,1,2].map(i=>`<i class="${i<=st.step?'on':''}"></i>`).join('')}</div>`:''}${body}</div>`},
-me(){return `<div class="card" style="cursor:pointer;background:${isPro()?'#fffaf0':'linear-gradient(135deg,#fff6dc,#fff)'}" onclick="go('plan')"><div class="pet"><span style="font-size:36px">👑</span><div style="flex:1"><b>${isPro()?(PL.trial?'Premium 試用中':'Premium 會員'):'升級 Premium'}</b><div class="mut">${isPro()?'到期日 '+(PL.until||'—'):'多隻毛孩、無限次症狀初篩、每週健康週報'}</div></div><span class="mut">›</span></div></div>
+visit(){const p=cur();return `<a class="btn block" style="background:var(--bad);margin-bottom:12px;text-decoration:none" href="https://www.google.com/maps/search/24小時+動物醫院" target="_blank" rel="noopener">📍 找附近 24 小時動物醫院</a>
+ <div class="seg" style="margin-bottom:14px">${[['log','📋 症狀紀錄'],['sum','📄 看診摘要'],['info','🚨 緊急警訊須知']].map(([k,l])=>`<button class="${vtab===k?'on':''}" onclick="vtab='${k}';render()">${l}</button>`).join('')}</div>${VV[vtab](p)}`},
+me(){return `<div class="card" style="cursor:pointer;background:${isPro()?'#fffaf0':'linear-gradient(135deg,#fff6dc,#fff)'}" onclick="go('plan')"><div class="pet"><span style="font-size:36px">👑</span><div style="flex:1"><b>${isPro()?(PL.trial?'Premium 試用中':'Premium 會員'):'升級 Premium'}</b><div class="mut">${isPro()?'到期日 '+(PL.until||'—'):'多隻毛孩、無限看診摘要、每週健康週報'}</div></div><span class="mut">›</span></div></div>
  <div class="card list"><h2>我的毛孩</h2>${S.pets.map(p=>`<div class="it">${avatar(p,'avatar" style="width:44px;height:44px;font-size:22px')}<div class="t"><b>${esc(p.name)}</b><br><small>${p.species==='cat'?'貓咪':'狗狗'}・${esc(p.breed)}・${age(p.birthday)}</small></div><button class="btn sec" style="min-height:40px" onclick="addPet('${p.id}')">編輯</button><button class="btn ghost" onclick="delPet('${p.id}')" aria-label="刪除">🗑️</button></div>`).join('')}
  <button class="btn sec block" style="margin-top:8px" onclick="addPet()">＋ 新增毛孩 ${!isPro()&&S.pets.length>=1?'<span class="lock">👑</span>':''}</button></div>
  <div class="card list"><h2>其他</h2>
  <div class="it" style="cursor:pointer" onclick="familyShare()"><span class="ic">👨‍👩‍👧</span><div class="t"><b>家庭共享</b><br><small>${isPro()?'匯出／匯入資料給家人':'Premium 功能'}</small></div>${isPro()?'<span class="mut">›</span>':'<span class="lock">👑</span>'}</div>
  <div class="it" style="cursor:pointer" onclick="toast('LINE 提醒即將推出，敬請期待！')"><span class="ic">💬</span><div class="t"><b>LINE 提醒</b><br><small>疫苗到期推播到 LINE</small></div><span class="soon">即將推出</span></div>
  <div class="it" style="cursor:pointer" onclick="seedAsk()"><span class="ic">🧪</span><div class="t"><b>載入示範資料</b><br><small>會取代目前資料</small></div></div>
- <div class="it" style="cursor:pointer" onclick="confirmBox('這會刪除這個 App 的所有毛孩與紀錄（不影響其他網站），無法復原。',()=>{clearPetData();S={pets:[],records:[],daily:[],cur:null};PL={tier:'free',until:null,trial:false,trialUsed:false,ai:{}};onbStep=0;go('dash');toast('已清除')},'全部清除')"><span class="ic">🗑️</span><div class="t"><b style="color:var(--bad)">清除全部資料</b></div></div></div>`},
-plan(){const yr=PL.sel!=='m';const F=[['毛孩數量','1 隻','無限'],['健康護照・日常紀錄','✓','✓'],['疫苗／驅蟲提醒','✓','✓'],['AI 症狀初篩',FREE_AI+' 次/月','無限'],['家庭共享同步','—','✓'],['每週 AI 健康週報','—','✓'],['給獸醫看的完整 PDF','基本版','✓ 含體重圖表'],['LINE 提醒','—','即將推出']];
+ <div class="it" style="cursor:pointer" onclick="confirmBox('這會刪除這個 App 的所有毛孩與紀錄（不影響其他網站），無法復原。',()=>{clearPetData();S={pets:[],records:[],daily:[],cur:null};PL={tier:'free',until:null,trial:false,trialUsed:false,sum:{}};onbStep=0;go('dash');toast('已清除')},'全部清除')"><span class="ic">🗑️</span><div class="t"><b style="color:var(--bad)">清除全部資料</b></div></div></div>`},
+plan(){const yr=PL.sel!=='m';const F=[['毛孩數量','1 隻','無限'],['健康護照・日常紀錄','✓','✓'],['疫苗／驅蟲提醒','✓','✓'],['症狀紀錄','✓','✓'],['看診摘要','1 次/月・近 7 天','無限・近 30 天＋圖表'],['家庭共享同步','—','✓'],['每週 AI 健康週報','—','✓'],['LINE 提醒','—','即將推出']];
  return `<div class="card" style="text-align:center;background:linear-gradient(135deg,#fff6dc,#fff)"><div style="font-size:48px">👑</div><h2 style="font-size:22px">寵物健康管家 Premium</h2><p class="mut">給毛孩更完整的照顧，全家一起顧</p>${isPro()?`<span class="pill p-ok">目前方案：${PL.trial?'7 天試用':'Premium'}（到 ${PL.until}）</span>`:''}</div>
  <div class="card"><h2>方案比較</h2><table class="cmp"><tr><th></th><th>免費</th><th style="color:var(--gold)">Premium</th></tr>${F.map(([a,b,c])=>`<tr><td>${a}</td><td>${b}</td><td><b>${c==='即將推出'?'<span class="soon">即將推出</span>':c}</b></td></tr>`).join('')}</table></div>
  ${isPro()?`<div class="card"><button class="btn sec block" onclick="confirmBox('取消後會回到免費版（示範）。',()=>{PL.tier='free';PL.trial=false;PL.until=null;savePL();render();toast('已回到免費版')},'取消訂閱')">取消訂閱（示範）</button></div>`:`
@@ -190,27 +175,51 @@ plan(){const yr=PL.sel!=='m';const F=[['毛孩數量','1 隻','無限'],['健康
  <div class="demo">🧪 示範版：不會真的收費，點按鈕只會在這台裝置上切換方案狀態。</div>`},
 share(){return V.me()}
 };
-// ---------- symptom engine (demo rules) ----------
-const SYM=[{id:'breath',e:'😮‍💨',t:'呼吸困難／張嘴喘',lv:3},{id:'seizure',e:'⚡',t:'抽搐／癲癇',lv:3},{id:'toxin',e:'☠️',t:'可能誤食毒物（巧克力、葡萄、百合、人藥）',lv:3},{id:'bloodvomit',e:'🩸',t:'吐血／嘔吐物有血',lv:3},
-{id:'nourine',e:'🚽',t:'超過一天沒尿／一直蹲砂盆尿不出來',lv:3,cat:1},{id:'collapse',e:'😵',t:'昏倒／站不起來',lv:3},{id:'bloat',e:'🎈',t:'肚子脹大、一直乾嘔',lv:3},{id:'gums',e:'👄',t:'牙齦蒼白或發紫',lv:3},{id:'bleed',e:'🚑',t:'大量出血／嚴重外傷',lv:3},
-{id:'vomit',e:'🤮',t:'嘔吐',lv:1},{id:'diarrhea',e:'💩',t:'拉肚子',lv:1},{id:'bloodstool',e:'🩸',t:'便便有血',lv:2},{id:'noeat',e:'🍽️',t:'不太吃',lv:1},{id:'lethargy',e:'😴',t:'沒精神、一直睡',lv:1},
-{id:'limp',e:'🦵',t:'跛腳',lv:1},{id:'eye',e:'👁️',t:'眼睛紅、有分泌物',lv:1},{id:'itch',e:'🐾',t:'皮膚癢、掉毛',lv:0},{id:'cough',e:'🤧',t:'咳嗽／打噴嚏',lv:1},{id:'fever',e:'🌡️',t:'身體摸起來很燙',lv:2},{id:'drink',e:'💧',t:'喝水變很多',lv:1}];
-const LV=[{t:'居家觀察',e:'🏡',d:'目前看起來不緊急。持續記錄吃喝拉撒，24–48 小時沒改善或變嚴重就去看醫生。'},null,{t:'盡快就醫',e:'⏰',d:'建議 24 小時內帶去給獸醫看，這段時間注意有沒有變嚴重。'},{t:'立即就醫',e:'🚨',d:'可能有生命危險！請馬上去最近的動物醫院或 24 小時急診。'}];
-function triage(ids,dur,p){const why=[];let lv=0;const s=ids.map(i=>SYM.find(x=>x.id===i)).filter(Boolean);
- s.forEach(x=>{if(x.lv===3){lv=3;why.push(`「${x.t}」是緊急徵兆 → 立即就醫`)}else if(x.lv===2){lv=Math.max(lv,2);why.push(`「${x.t}」→ 盡快就醫`)}});
- const mild=s.filter(x=>x.lv===1).length;
- if(mild>=3){lv=Math.max(lv,2);why.push(`同時有 ${mild} 個一般症狀 → 盡快就醫`)}
- if(mild>=1&&dur>=3){lv=Math.max(lv,2);why.push('症狀已持續 3 天以上 → 盡快就醫')}
- if(p.species==='cat'&&ids.includes('noeat')&&dur>=1){lv=Math.max(lv,2);why.push('貓咪超過一天不吃有脂肪肝風險 → 盡快就醫')}
- const yrs=p.birthday?(new Date()-new Date(p.birthday+'T00:00'))/3.156e10:3;
- if(mild>=1&&(yrs<0.5||yrs>10)&&lv<2){lv=2;why.push('幼齡（<6 個月）或高齡（>10 歲）抵抗力較弱 → 盡快就醫')}
- if(!why.length)why.push(mild?'只有輕微症狀、時間也不長 → 居家觀察':'沒有勾選明顯症狀 → 居家觀察');
- return {lv,why}}
-function togSym(id){const a=aiState.sym;const i=a.indexOf(id);i<0?a.push(id):a.splice(i,1);render()}
-function runAI(){aiState.desc=$('#aDesc').value;if(aiLeft()<=0)return paywall('ai');if(!isPro()){PL.ai[month()]=(PL.ai[month()]||0)+1;savePL()}
- aiState.res=triage(aiState.sym,+aiState.dur,cur());aiState.step=3;render()}
+// ---------- 就醫準備（只記錄、不判斷） ----------
+const SX=[['🤮','嘔吐'],['💩','拉肚子'],['🍽️','不吃'],['😴','沒精神'],['🤧','咳嗽／噴嚏'],['🦵','跛腳'],['👁️','眼睛'],['🐾','皮膚癢'],['💧','喝水變多'],['🚽','排尿異常'],['🌡️','發燙'],['❓','其他']];
+const LVL=[['少','正常','多'],['差','普通','好']];
+const EMG=['呼吸困難、張嘴喘氣','抽搐、癲癇發作','可能誤食毒物（巧克力、葡萄、百合、洋蔥、人用藥等）','嘔吐物或糞便帶大量血','貓咪長時間尿不出來或一直蹲砂盆','昏倒、站不起來','肚子突然脹大、一直乾嘔','牙齦蒼白、發紫','大量出血或嚴重外傷','中暑（大量喘氣、流口水、體溫很高）'];
+function sxList(p){return (S.symptoms||[]).filter(x=>x.pet===p.id).sort((a,b)=>a.time<b.time?1:-1)}
+const VV={
+log(p){const l=sxList(p);return `<button class="btn block" onclick="addSymptom()" style="margin-bottom:14px">＋ 記錄症狀</button>
+ <div class="card list"><h2>📋 ${esc(p.name)} 的症狀紀錄</h2><p class="mut">把發生時間、次數、樣子記下來，看醫生時說得更清楚。</p>${l.map(x=>`<div class="it"><span class="ic">${(SX.find(s=>s[1]===x.types[0])||['📝'])[0]}</span><div class="t"><b>${x.types.map(esc).join('、')}</b>${x.freq?` <small>${esc(x.freq)}</small>`:''}<br><small>${x.time.replace('T',' ')}・食慾${x.appetite}・喝水${x.water}・精神${x.energy}</small>${x.desc?`<div style="font-size:14px">${esc(x.desc)}</div>`:''}${x.photo?`<img src="${x.photo}" style="max-width:120px;border-radius:10px;margin-top:4px">`:''}</div><button class="btn ghost" onclick="delSx('${x.id}')" aria-label="刪除">🗑️</button></div>`).join('')||'<p class="mut">還沒有症狀紀錄。</p>'}</div>`},
+sum(p){const days=isPro()?30:7,left=sumLeft();return `<div class="card"><h2>📄 看診摘要</h2><p class="mut">一鍵整理成一頁給獸醫看：近期症狀、每日紀錄、用藥、過敏、疫苗。</p>
+ <div class="alert ok">涵蓋最近 <b>${days}</b> 天${isPro()?'・含體重圖表 👑':'（Premium 可看 30 天＋圖表）'}</div>
+ <p class="mut">${isPro()?'👑 Premium：無限次產生':`免費版本月剩 <b>${left}</b> / ${FREE_SUM} 次`}</p>
+ <div class="row"><button class="btn" onclick="makeSummary()">📄 產生看診摘要</button></div></div>`},
+info(){return `<div class="card"><h2>🚨 緊急警訊須知（一般衛教資訊）</h2><p class="mut">以下是常見的一般性急症徵兆，並非針對你的毛孩所做的判斷。若看到這些情況，一般建議立即聯絡獸醫或前往動物醫院。</p>
+ <ul style="padding-left:20px;font-size:16px">${EMG.map(x=>`<li style="margin:6px 0">${x}</li>`).join('')}</ul>
+ <div class="disc">本頁僅為一般衛教資訊，不是診斷。任何健康疑慮請諮詢獸醫。</div></div>`}};
+function addSymptom(){const now=new Date();const t=`${today()}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+ const g=(id,L)=>`<div class="chips" id="${id}">${L.map((l,i)=>`<button class="chip ${i===1?'on':''}" data-v="${l}" onclick="pickIn(this)">${l}</button>`).join('')}</div>`;
+ sheet(`<h2>📋 記錄症狀</h2><label class="f">發生時間</label><input type="datetime-local" id="xT" value="${t}">
+ <label class="f">什麼狀況？（可複選）</label><div class="chips" id="xTy">${SX.map(([e,l])=>`<button class="chip" data-v="${l}" onclick="this.classList.toggle('on')"><span class="e">${e}</span>${l}</button>`).join('')}</div>
+ <label class="f">次數／頻率</label><input id="xF" placeholder="例如：今天 3 次">
+ <label class="f">描述</label><textarea id="xD" rows="2" placeholder="顏色、樣子、發生前吃了什麼…"></textarea>
+ <label class="f">食慾</label>${g('xA',LVL[0])}<label class="f">喝水</label>${g('xW',LVL[0])}<label class="f">精神</label>${g('xE',LVL[1])}
+ <label class="f">照片（選填）</label><input type="file" accept="image/*" id="xP">
+ <div class="row"><button class="btn sec" onclick="closeSheet()">取消</button><button class="btn" id="xSave">儲存</button></div>`);
+ $('#xSave').onclick=async()=>{const ty=[...document.querySelectorAll('#xTy .on')].map(b=>b.dataset.v);if(!ty.length)return toast('請至少選一個狀況');const f=$('#xP').files[0];const o=x=>document.querySelector(`#${x} .on`).dataset.v;
+  (S.symptoms=S.symptoms||[]).push({id:uid(),pet:S.cur,time:$('#xT').value||t,types:ty,freq:$('#xF').value,desc:$('#xD').value,appetite:o('xA'),water:o('xW'),energy:o('xE'),photo:f?await toData(f):''});save();closeSheet();vtab='log';render();toast('✅ 已記錄，看醫生時可以產生摘要')}}
+function delSx(id){confirmBox('刪除這筆症狀紀錄？',()=>{S.symptoms=S.symptoms.filter(x=>x.id!==id);save();render();toast('已刪除')})}
+function summaryText(p,days){const from=addDays(today(),-days+1),sx=sxList(p).filter(x=>x.time.slice(0,10)>=from),dl=S.daily.filter(x=>x.pet===p.id&&x.date>=from).sort((a,b)=>a.date<b.date?-1:1),rs=S.records.filter(r=>r.pet===p.id);
+ const L=[`【${p.name} 看診摘要】${from} ～ ${today()}`,`${p.species==='cat'?'貓':'狗'}・${p.breed||'-'}・${age(p.birthday)}・${p.weight||'-'}kg・過敏：${p.allergies||'無'}`,'',`■ 症狀紀錄（${sx.length} 筆）`];
+ sx.forEach(x=>L.push(`- ${x.time.replace('T',' ')} ${x.types.join('、')}${x.freq?'（'+x.freq+'）':''}｜食慾${x.appetite} 喝水${x.water} 精神${x.energy}${x.desc?'｜'+x.desc:''}`));
+ L.push('','■ 用藥');rs.filter(r=>r.type==='med').forEach(r=>L.push(`- ${r.date} ${r.name}${r.note?'（'+r.note+'）':''}`));
+ L.push('','■ 疫苗／驅蟲');rs.filter(r=>['vaccine','deworm'].includes(r.type)).sort((a,b)=>a.date<b.date?1:-1).forEach(r=>L.push(`- ${r.date} ${r.name}${r.next?'（下次 '+r.next+'）':''}`));
+ L.push('',`■ 每日紀錄（${dl.length} 天）`);dl.forEach(x=>L.push(`- ${x.date} 吃:${x.food} 便:${x.stool} 精神:${x.mood} 活動:${x.activity}分${x.weight?' '+x.weight+'kg':''}`));
+ L.push('','※ 飼主自行記錄，供獸醫參考。');return {L}}
+function makeSummary(){const p=cur();if(sumLeft()<=0)return paywall('sum');if(!isPro()){PL.sum[month()]=(PL.sum[month()]||0)+1;savePL()}
+ const days=isPro()?30:7,{L}=summaryText(p,days),txt=L.join('\n');window._sumTxt=txt;
+ sheet(`<h2>📄 看診摘要</h2><pre style="white-space:pre-wrap;font-family:inherit;font-size:14px;background:#fffaf5;padding:12px;border-radius:12px;max-height:45vh;overflow:auto">${esc(txt)}</pre>
+ <div class="row"><button class="btn" onclick="printSummary(${days})">🖨️ 列印／存 PDF</button><button class="btn" style="background:#06c755" onclick="shareSummary()">💬 分享到 LINE</button></div>
+ <button class="btn sec block" style="margin-top:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText(window._sumTxt).then(()=>toast('✅ 已複製'))">📋 複製文字</button><button class="btn ghost block" onclick="closeSheet()">關閉</button>`)}
+function shareSummary(){const t=window._sumTxt;if(navigator.share)navigator.share({title:'看診摘要',text:t}).catch(()=>{});else window.open('https://line.me/R/share?text='+encodeURIComponent(t),'_blank')}
+function printSummary(days){const p=cur(),{L}=summaryText(p,days);
+ $('#printArea').innerHTML=`<h1>🏥 ${esc(p.name)} 看診摘要</h1>${L.slice(1).map(l=>l.startsWith('■')?`<h3>${esc(l)}</h3>`:`<div>${esc(l)}</div>`).join('')}${isPro()?'<h3>■ 體重趨勢</h3><div id="pc"></div>':''}`;
+ if(isPro()){const tmp=document.createElement('div');tmp.id='chart';document.body.appendChild(tmp);drawChart();$('#pc').innerHTML=tmp.innerHTML;tmp.remove()}window.print()}
 // ---------- paywall / checkout (MOCK) ----------
-function paywall(why){const M={pet:['🐾','想照顧更多毛孩嗎？','免費版可以建立 1 隻毛孩，升級 Premium 就能無限新增，全家的毛孩一起管理。'],ai:['🩺','本月免費初篩次數用完了',`免費版每月 ${FREE_AI} 次，Premium 無限次，毛孩怪怪的隨時都能查。`],report:['📊','每週 AI 健康週報','每週整理飲食、排便、活動、體重的變化，提早發現小問題。'],share:['👨‍👩‍👧','家庭共享','讓家人、保姆一起更新毛孩紀錄。']}[why];
+function paywall(why){const M={pet:['🐾','想照顧更多毛孩嗎？','免費版可以建立 1 隻毛孩，升級 Premium 就能無限新增，全家的毛孩一起管理。'],sum:['📄','本月免費看診摘要已用完',`免費版每月 ${FREE_SUM} 次（近 7 天），Premium 無限次、涵蓋 30 天並附體重圖表。`],report:['📊','每週 AI 健康週報','每週整理飲食、排便、活動、體重的變化，提早發現小問題。'],share:['👨‍👩‍👧','家庭共享','讓家人、保姆一起更新毛孩紀錄。']}[why];
  sheet(`<div style="text-align:center"><div style="font-size:54px">${M[0]}</div><h2>${M[1]}</h2><p class="mut" style="font-size:16px">${M[2]}</p></div>
  ${PL.trialUsed?'':'<button class="btn gold block" onclick="checkout(true)">🎁 免費試用 7 天</button><div style="height:8px"></div>'}<button class="btn sec block" onclick="closeSheet();go('plan')">看方案（NT$129/月起）</button><button class="btn ghost block" onclick="closeSheet()">之後再說</button>`)}
 function checkout(trial){const yr=PL.sel!=='m';
@@ -223,7 +232,7 @@ function weeklyReport(){if(!isPro())return paywall('report');const p=cur(),t=tod
  sheet(`<h2>📊 ${esc(p.name)} 本週健康週報</h2><p class="mut">${addDays(t,-6)} ～ ${t}・記錄 ${d.length}/7 天</p>
  <div class="g2"><div class="alert ok">🏃 平均活動<br><b style="font-size:22px">${av}</b> 分/天</div><div class="alert ok">⚖️ 體重<br><b style="font-size:22px">${ws.length?ws[ws.length-1]:'-'}</b> kg</div><div class="alert">😋 正常進食<br><b style="font-size:22px">${cnt('food','正常')}</b> 天</div><div class="alert">👍 正常排便<br><b style="font-size:22px">${cnt('stool','正常')}</b> 天</div></div>
  <h3>重點</h3>${trend(p).map(([c,x])=>`<div class="alert ${c}">${x}</div>`).join('')||'<p class="mut">本週一切穩定 👍</p>'}
- <p class="mut">示範版：週報以規則整理，正式版會由 AI 產生個人化建議。僅供參考，非獸醫診斷。</p><button class="btn block" onclick="closeSheet()">知道了</button>`)}
+ <p class="mut">週報只整理你的紀錄數據，不做健康判斷；有疑慮請諮詢獸醫。</p><button class="btn block" onclick="closeSheet()">知道了</button>`)}
 function familyShare(){if(!isPro())return paywall('share');
  sheet(`<h2>👨‍👩‍👧 家庭共享</h2><p class="mut">示範版用檔案共享：匯出後傳給家人（例如用 LINE），對方匯入就能看到一樣的資料。正式版會改成雲端即時同步。</p>
  <button class="btn block" onclick="exportJSON()">⬇️ 匯出資料檔</button><div style="height:10px"></div><label class="btn sec block">⬆️ 匯入家人的資料檔<input type="file" accept="application/json" id="imp" class="hidden"></label><button class="btn ghost block" onclick="closeSheet()">關閉</button>`);
@@ -264,7 +273,7 @@ function quickLog(date){const p=cur(),d=date||today(),o=S.daily.find(x=>x.pet===
  <div class="row"><button class="btn sec" onclick="closeSheet()">取消</button><button class="btn" id="qSave">儲存</button></div>`);
  $('#qSave').onclick=()=>{const g=id=>document.querySelector(`#${id} .on`).dataset.v;const n={pet:p.id,date:$('#qD').value||today(),food:g('qF'),stool:g('qS'),mood:g('qM'),activity:+$('#qA').value,weight:+$('#qW').value||''};
   S.daily=S.daily.filter(x=>!(x.pet===p.id&&x.date===n.date));S.daily.push(n);if(n.weight&&n.date>=today())p.weight=n.weight;save();closeSheet();render();
-  toast(n.stool==='血便'||n.food==='沒吃'?'已儲存。狀況不太好，可以用「症狀」檢查看看':'✅ 已記錄，'+p.name+'今天也辛苦了！')}}
+  toast(n.stool==='血便'||n.food==='沒吃'?'已儲存。可以到「就醫準備」記錄症狀細節':'✅ 已記錄，'+p.name+'今天也辛苦了！')}}
 function drawChart(){const el=$('#chart');if(!el)return;const ws=S.daily.filter(x=>x.pet===S.cur&&x.weight).sort((a,b)=>a.date<b.date?-1:1).slice(-30);
  if(ws.length<2){el.innerHTML='<p class="mut">記錄 2 次以上體重，就會出現趨勢圖。</p>';return}
  const W=600,H=220,P=40,v=ws.map(x=>x.weight),mn=Math.min(...v)-0.2,mx=Math.max(...v)+0.2,X=i=>P+i*(W-2*P)/(ws.length-1),Y=w=>H-P-(w-mn)/(mx-mn)*(H-2*P),pts=ws.map((x,i)=>`${X(i)},${Y(x.weight)}`).join(' ');
@@ -273,7 +282,7 @@ function drawChart(){const el=$('#chart');if(!el)return;const ws=S.daily.filter(
  <polygon points="${X(0)},${H-P} ${pts} ${X(ws.length-1)},${H-P}" fill="url(#g)"/><polyline points="${pts}" fill="none" stroke="#e8743b" stroke-width="3.5" stroke-linejoin="round"/>
  <circle cx="${X(ws.length-1)}" cy="${Y(v[v.length-1])}" r="6" fill="#e8743b"/><text x="${X(ws.length-1)}" y="${Y(v[v.length-1])-12}" font-size="16" font-weight="bold" fill="#33241b" text-anchor="end">${v[v.length-1]} kg</text>
  <text x="${P}" y="${H-12}" font-size="14" fill="#7a6455">${ws[0].date.slice(5)}</text><text x="${W-P}" y="${H-12}" font-size="14" fill="#7a6455" text-anchor="end">${ws[ws.length-1].date.slice(5)}</text></svg>`}
-const A={daily:drawChart,ai(){const f=$('#aPh');if(f)f.onchange=async()=>{if(f.files[0]){aiState.desc=$('#aDesc').value;aiState.photo=await toData(f.files[0]);render()}}}};
+const A={daily:drawChart};
 function toData(f){return new Promise(r=>{const fr=new FileReader();fr.onload=()=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas'),s=Math.min(1,400/Math.max(img.width,img.height));c.width=img.width*s;c.height=img.height*s;c.getContext('2d').drawImage(img,0,0,c.width,c.height);r(c.toDataURL('image/jpeg',.8))};img.onerror=()=>r(fr.result);img.src=fr.result};fr.readAsDataURL(f)})}
 function delPet(id){const p=S.pets.find(x=>x.id===id);confirmBox(`刪除「${esc(p.name)}」和牠所有的紀錄？這無法復原。`,()=>{S.pets=S.pets.filter(x=>x.id!==id);S.records=S.records.filter(r=>r.pet!==id);S.daily=S.daily.filter(r=>r.pet!==id);S.cur=null;save();render();toast('已刪除')})}
 function delRec(id){const r=S.records.find(x=>x.id===id);confirmBox(`刪除「${esc(r.name)}」這筆紀錄？`,()=>{S.records=S.records.filter(x=>x.id!==id);save();render();toast('已刪除')})}
@@ -285,7 +294,7 @@ function printPass(){const p=cur(),rs=S.records.filter(r=>r.pet===p.id).sort((a,
 function exportJSON(){const b=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`pet-health-${today()}.json`;a.click();toast('✅ 已匯出')}
 function seedAsk(){S.pets.length?confirmBox('載入示範資料會取代目前所有毛孩資料。',seed,'載入'):seed()}
 function seed(){const d=uid(),c=uid(),t=today();
- S={cur:d,pets:[{id:d,name:'麻糬',species:'dog',breed:'柴犬',birthday:addDays(t,-365*3-40),weight:9.8,allergies:'雞肉',photo:''},{id:c,name:'奶茶',species:'cat',breed:'米克斯',birthday:addDays(t,-365*11),weight:4.6,allergies:'',photo:''}],
+ S={symptoms:[{id:uid(),pet:d,time:addDays(t,-1)+'T21:30',types:['嘔吐'],freq:'2 次',desc:'吐出黃色液體，吐完還想喝水',appetite:'少',water:'正常',energy:'普通',photo:''},{id:uid(),pet:d,time:t+'T07:10',types:['拉肚子','沒精神'],freq:'早上 1 次',desc:'軟便，不太想散步',appetite:'少',water:'多',energy:'差',photo:''}],cur:d,pets:[{id:d,name:'麻糬',species:'dog',breed:'柴犬',birthday:addDays(t,-365*3-40),weight:9.8,allergies:'雞肉',photo:''},{id:c,name:'奶茶',species:'cat',breed:'米克斯',birthday:addDays(t,-365*11),weight:4.6,allergies:'',photo:''}],
  records:[{id:uid(),pet:d,type:'vaccine',name:'八合一疫苗',date:addDays(t,-355),next:addDays(t,10),note:'安心動物醫院'},{id:uid(),pet:d,type:'vaccine',name:'狂犬病疫苗',date:addDays(t,-200),next:addDays(t,165),note:''},
  {id:uid(),pet:d,type:'deworm',name:'體內外驅蟲',date:addDays(t,-33),next:addDays(t,-3),note:'口服錠'},{id:uid(),pet:d,type:'vet',name:'年度健檢',date:addDays(t,-90),next:'',note:'血檢正常'},
  {id:uid(),pet:d,type:'med',name:'止癢藥',date:addDays(t,-60),next:'',note:'7 天療程'},{id:uid(),pet:c,type:'vaccine',name:'三合一疫苗',date:addDays(t,-300),next:addDays(t,65),note:''},{id:uid(),pet:c,type:'deworm',name:'滴劑驅蟲',date:addDays(t,-20),next:addDays(t,10),note:''}],daily:[]};
