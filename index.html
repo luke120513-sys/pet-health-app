@@ -34,7 +34,10 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px;borde
 <main id="main"></main>
 <div id="printArea"></div>
 <script>
-const KEY='petapp_v1';
+const KEY='pet_app_v1';
+// 同網域共用規則：只用 pet_ 前綴，禁止 localStorage.clear()；快取/SW 只能用 petsite- 前綴
+if(localStorage.getItem('petapp_v1')!==null){if(localStorage.getItem(KEY)===null)localStorage.setItem(KEY,localStorage.getItem('petapp_v1'));localStorage.removeItem('petapp_v1')}
+function clearPetData(){Object.keys(localStorage).filter(k=>k.startsWith('pet_')).forEach(k=>localStorage.removeItem(k))}
 let S=JSON.parse(localStorage.getItem(KEY)||'null')||{pets:[],records:[],daily:[],cur:null};
 const save=()=>localStorage.setItem(KEY,JSON.stringify(S));
 const $=s=>document.querySelector(s), uid=()=>Math.random().toString(36).slice(2,9);
@@ -104,7 +107,7 @@ ai(){const p=cur();if(!p)return noPet();const sy=SYM.filter(s=>!s.cat||p.species
  <div class="row"><button class="btn" id="aRun">開始初篩</button></div></div><div id="aRes"></div>`},
 share(){return `<div class="card"><h2>👨‍👩‍👧 家庭共享（示範）</h2><p style="color:var(--mut)">原型版以 JSON 檔模擬共享：匯出後傳給家人或保姆，對方匯入即可看到相同資料。正式版可改為雲端同步與邀請連結。</p>
  <div class="row"><button class="btn" onclick="exportJSON()">⬇️ 匯出 JSON</button><label class="btn sec" style="margin:0;color:var(--txt)">⬆️ 匯入 JSON<input type="file" accept="application/json" id="imp" class="hidden"></label></div></div>
- <div class="card"><h2>資料管理</h2><div class="row"><button class="btn sec" onclick="seed()">載入示範資料</button><button class="btn red" onclick="if(confirm('確定清除所有資料？')){localStorage.removeItem(KEY);S={pets:[],records:[],daily:[],cur:null};render()}">清除全部資料</button></div></div>`}
+ <div class="card"><h2>資料管理</h2><div class="row"><button class="btn sec" onclick="seed()">載入示範資料</button><button class="btn red" onclick="if(confirm('確定清除所有資料？')){clearPetData();S={pets:[],records:[],daily:[],cur:null};render()}">清除全部資料</button></div></div>`}
 };
 // symptom rules: transparent, demo-only
 const SYM=[
